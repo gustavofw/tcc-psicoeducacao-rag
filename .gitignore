@@ -1,0 +1,7 @@
+.env
+backend/data/obras_beck/
+backend/data/processados/
+__pycache__/
+*.pyc
+.venv/
+node_modules/
