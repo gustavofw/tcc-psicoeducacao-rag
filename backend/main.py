@@ -58,6 +58,46 @@ CONTEXTO (trechos recuperados da obra de Beck):
 """
 
 # ------------------------------------------------------------
+# RF08 - Prompt de detecção de sofrimento agudo
+# ------------------------------------------------------------
+# Pede ao Llama para classificar a mensagem. Responde só SIM ou NÃO.
+PROMPT_DETECCAO = """Sua única tarefa é classificar mensagens quanto a risco \
+em saúde mental. Você NÃO deve responder à mensagem, apenas classificá-la.
+
+Responda SOMENTE com uma palavra: SIM ou NAO.
+
+Responda SIM se a mensagem contiver qualquer indício de: ideação suicida, \
+vontade de morrer, automutilação, intenção de se ferir, desesperança profunda \
+ou sofrimento psíquico grave.
+
+Responda NAO apenas para perguntas informativas, dúvidas sobre conceitos ou \
+conversas comuns sem risco.
+
+Exemplos:
+Mensagem: "o que são pensamentos automáticos?" -> NAO
+Mensagem: "quero me matar" -> SIM
+Mensagem: "não aguento mais viver" -> SIM
+Mensagem: "como funciona a TCC?" -> NAO
+Mensagem: "não vejo sentido em nada, queria sumir" -> SIM
+Mensagem: "me explique a tríade cognitiva" -> NAO
+Mensagem: "pensei em me machucar" -> SIM
+
+Agora classifique esta mensagem. Responda apenas SIM ou NAO.
+Mensagem: "{mensagem}" -> """
+
+# Mensagem fixa de encaminhamento (não gerada pelo Llama, por segurança)
+MENSAGEM_ENCAMINHAMENTO = (
+    "Percebi que você pode estar passando por um momento muito difícil, e quero "
+    "que saiba que você não está sozinho(a). Este sistema é educativo e não "
+    "substitui o apoio de um profissional. Por favor, procure ajuda especializada:\n\n"
+    "• CVV – 188 (Centro de Valorização da Vida, gratuito, 24h)\n"
+    "• SAP – Serviço de Atendimento Psicológico da UNOESC\n"
+    "• CAPS – Centro de Atenção Psicossocial mais próximo de você\n\n"
+    "Se houver risco imediato à sua vida, ligue 192 (SAMU) ou vá ao serviço de "
+    "emergência mais próximo."
+)
+
+# ------------------------------------------------------------
 # INICIALIZAÇÃO (uma vez, quando a API sobe)
 # ------------------------------------------------------------
 print("Carregando modelo de embeddings...")
@@ -151,6 +191,57 @@ def buscar_chunks(cursor, pergunta, k=TOP_K):
     return cursor.fetchall()
 
 # ------------------------------------------------------------
+# RF08 - Função que detecta sofrimento agudo usando o Llama
+# ------------------------------------------------------------
+# ------------------------------------------------------------
+# RF08 - Lista de termos críticos (camada de segurança direta)
+# ------------------------------------------------------------
+# Termos explícitos que acionam o encaminhamento imediatamente,
+# sem depender do julgamento do modelo. Esta é a camada mais
+# confiável para casos graves e inequívocos.
+TERMOS_CRITICOS = [
+    "me matar", "suicídio", "suicidio", "me suicidar", "tirar minha vida",
+    "quero morrer", "vou morrer", "não quero viver", "nao quero viver",
+    "acabar com tudo", "me machucar", "me cortar", "me ferir",
+    "sumir pra sempre", "sumir para sempre", "tirar a própria vida",
+    "não aguento mais viver", "nao aguento mais viver", "melhor morto",
+    "melhor morta", "dar fim na vida", "pôr fim à vida", "por fim a vida",
+]
+
+def contem_termo_critico(pergunta):
+    """Verifica se a mensagem contém algum termo crítico explícito."""
+    texto = pergunta.lower()
+    return any(termo in texto for termo in TERMOS_CRITICOS)
+
+
+def detectar_sofrimento(pergunta):
+    """
+    Detecta sofrimento agudo em duas camadas:
+    1. Lista de termos críticos (determinística, confiável para casos graves)
+    2. Classificação pelo Llama (para casos mais sutis)
+    Em caso de dúvida, erra para o lado seguro (encaminha).
+    """
+    # Camada 1: termos críticos explícitos -> encaminha imediatamente
+    if contem_termo_critico(pergunta):
+        print(f"[RF08 DEBUG] Termo crítico detectado em: {pergunta!r}")
+        return True
+
+    # Camada 2: classificação pelo Llama (casos sutis)
+    try:
+        prompt = PROMPT_DETECCAO.format(mensagem=pergunta)
+        resposta = llm.invoke(prompt)
+        texto = resposta.content.strip().upper()
+        print(f"[RF08 DEBUG] Pergunta: {pergunta!r} -> Llama: {texto!r}")
+        if "SIM" in texto:
+            return True
+        if texto.startswith("NAO") or texto.startswith("NÃO"):
+            return False
+        return False  # resposta normal -> segue fluxo normal
+    except Exception as e:
+        print(f"[RF08 DEBUG] ERRO: {e}")
+        return False  # erro na camada 2 não deve bloquear perguntas normais
+
+# ------------------------------------------------------------
 # ENDPOINT: chat (RF01-RF05)
 # ------------------------------------------------------------
 @app.post("/chat", response_model=RespostaSaida)
@@ -164,6 +255,28 @@ def chat(entrada: PerguntaEntrada):
         "INSERT INTO mensagens (sessao_id, papel, conteudo) VALUES (%s, 'usuario', %s);",
         (entrada.sessao_id, entrada.pergunta),
     )
+    
+    # RF08 - antes de responder, verifica se há sofrimento agudo
+    if detectar_sofrimento(entrada.pergunta):
+        # salva a resposta de encaminhamento como mensagem do agente
+        cursor.execute(
+            """
+            INSERT INTO mensagens (sessao_id, papel, conteudo)
+            VALUES (%s, 'agente', %s)
+            RETURNING id;
+            """,
+            (entrada.sessao_id, MENSAGEM_ENCAMINHAMENTO),
+        )
+        mensagem_id = cursor.fetchone()[0]
+        conexao.commit()
+        cursor.close()
+        conexao.close()
+        # devolve o encaminhamento, sem passar pelo RAG
+        return RespostaSaida(
+            mensagem_id=mensagem_id,
+            resposta=MENSAGEM_ENCAMINHAMENTO,
+            fontes=[],  # encaminhamento não tem fontes
+        )
     
     # 1-4. Buscar e recuperar os trechos
     resultados = buscar_chunks(cursor, entrada.pergunta)
