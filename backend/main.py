@@ -1,26 +1,23 @@
 """
 ============================================================
-main.py - API do back-end (FastAPI)
+main.py - API do back-end (FastAPI) - com ciclo de sessão
 ============================================================
 
-Esta é a API que expõe o RAG como um serviço web. O front-end
-(React) vai enviar as perguntas do usuário para cá, e receber
-de volta as respostas geradas.
-
-Por enquanto, temos apenas o endpoint principal:
-  POST /chat  -> recebe uma pergunta, roda o RAG, devolve a resposta
+Endpoints:
+  POST /sessao/iniciar    -> cria uma nova sessão (UC01)
+  POST /chat              -> recebe pergunta, roda o RAG, salva a mensagem (RF01-RF05)
+  POST /feedback          -> registra avaliação 1-5 de uma resposta (RF09)
+  POST /sessao/encerrar   -> encerra a sessão e descarta o histórico (RF07)
+  GET  /                  -> status da API
 
 Como rodar:
   uvicorn main:app --reload
-
-Depois de rodar, abra no navegador:
+Página de testes:
   http://localhost:8000/docs
-  (página de testes interativa gerada automaticamente pelo FastAPI)
 ============================================================
 """
-
 import psycopg2
-from fastapi import FastAPI
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
@@ -61,10 +58,8 @@ CONTEXTO (trechos recuperados da obra de Beck):
 """
 
 # ------------------------------------------------------------
-# INICIALIZAÇÃO (roda uma vez, quando a API sobe)
+# INICIALIZAÇÃO (uma vez, quando a API sobe)
 # ------------------------------------------------------------
-# Carregamos o modelo de embeddings e o Llama UMA VEZ, na inicialização,
-# para não ter que recarregar a cada requisição (o que seria lento).
 print("Carregando modelo de embeddings...")
 modelo_emb = SentenceTransformer(MODELO_EMBEDDING)
 
@@ -76,13 +71,8 @@ prompt_template = ChatPromptTemplate.from_messages([
     ("human", "Pergunta: {pergunta}"),
 ])
 
-# ------------------------------------------------------------
-# Cria a aplicação FastAPI
-# ------------------------------------------------------------
-app = FastAPI(title="API de Psicoeducação - TCC", version="0.1.0")
+app = FastAPI(title="API de Psicoeducação - TCC", version="0.2.0")
 
-# CORS: permite que o front-end (React, em outra porta) acesse a API.
-# Durante o desenvolvimento, liberamos tudo ("*"). Em produção, restringir.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -92,37 +82,65 @@ app.add_middleware(
 
 
 # ------------------------------------------------------------
-# MODELOS DE DADOS (o que entra e o que sai da API)
+# Helper: abrir conexão com o banco
 # ------------------------------------------------------------
-# O Pydantic valida automaticamente os dados recebidos.
+def get_conexao():
+    return psycopg2.connect(**DB_CONFIG)
 
+
+# ------------------------------------------------------------
+# MODELOS DE DADOS (entrada e saída)
+# ------------------------------------------------------------
 class PerguntaEntrada(BaseModel):
-    """O que o front-end envia."""
+    sessao_id: int          # a qual sessão esta mensagem pertence
     pergunta: str
 
 class FonteSaida(BaseModel):
-    """Cada fonte usada na resposta (rastreabilidade)."""
     trecho: int
     titulo: str
     similaridade: float
 
 class RespostaSaida(BaseModel):
-    """O que a API devolve."""
+    mensagem_id: int        # id da mensagem salva (usado depois no feedback)
     resposta: str
     fontes: list[FonteSaida]
 
+class SessaoSaida(BaseModel):
+    sessao_id: int
+
+class FeedbackEntrada(BaseModel):
+    mensagem_id: int
+    nota: int               # de 1 a 5
+
+class OkSaida(BaseModel):
+    ok: bool
+    detalhe: str
+
 
 # ------------------------------------------------------------
-# Função de busca (a mesma lógica já validada)
+# ENDPOINT: iniciar sessão (UC01)
 # ------------------------------------------------------------
-def buscar_chunks(pergunta, k=TOP_K):
-    """Conecta ao banco, busca os k trechos mais parecidos e devolve."""
-    vetor = modelo_emb.encode(pergunta).tolist()
-    conexao = psycopg2.connect(**DB_CONFIG)
+@app.post("/sessao/iniciar", response_model=SessaoSaida)
+def iniciar_sessao():
+    """Cria uma nova sessão de conversa e devolve o id dela."""
+    conexao = get_conexao()
     cursor = conexao.cursor()
+    cursor.execute("INSERT INTO sessoes DEFAULT VALUES RETURNING id;")
+    sessao_id = cursor.fetchone()[0]
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+    return SessaoSaida(sessao_id=sessao_id)
+
+
+# ------------------------------------------------------------
+# Função de busca vetorial
+# ------------------------------------------------------------
+def buscar_chunks(cursor, pergunta, k=TOP_K):
+    vetor = modelo_emb.encode(pergunta).tolist()
     cursor.execute(
         """
-        SELECT c.conteudo, d.titulo, 1 - (c.embedding <=> %s::vector) AS similaridade
+        SELECT c.id, c.conteudo, d.titulo, 1 - (c.embedding <=> %s::vector) AS similaridade
         FROM chunks c
         JOIN documentos d ON d.id = c.documento_id
         ORDER BY c.embedding <=> %s::vector
@@ -130,49 +148,121 @@ def buscar_chunks(pergunta, k=TOP_K):
         """,
         (vetor, vetor, k),
     )
-    resultados = cursor.fetchall()
-    cursor.close()
-    conexao.close()
-    return resultados
-
+    return cursor.fetchall()
 
 # ------------------------------------------------------------
-# ENDPOINT: POST /chat
+# ENDPOINT: chat (RF01-RF05)
 # ------------------------------------------------------------
 @app.post("/chat", response_model=RespostaSaida)
 def chat(entrada: PerguntaEntrada):
-    """
-    Recebe uma pergunta, executa o pipeline RAG e devolve
-    a resposta gerada + as fontes consultadas.
-    """
-    # 1-4. Buscar e recuperar os trechos
-    resultados = buscar_chunks(entrada.pergunta)
+    """Recebe a pergunta, roda o RAG, salva a mensagem e devolve a resposta."""
+    conexao = get_conexao()
+    cursor = conexao.cursor()
 
-    # Montar o contexto para o prompt
+    # Salva a mensagem do usuário
+    cursor.execute(
+        "INSERT INTO mensagens (sessao_id, papel, conteudo) VALUES (%s, 'usuario', %s);",
+        (entrada.sessao_id, entrada.pergunta),
+    )
+    
+    # 1-4. Buscar e recuperar os trechos
+    resultados = buscar_chunks(cursor, entrada.pergunta)
+    chunks_ids = [r[0] for r in resultados]
+
+    # Montar contexto
     contexto = "\n\n".join(
         f"[Trecho {i} - Fonte: {titulo}]\n{conteudo}"
-        for i, (conteudo, titulo, sim) in enumerate(resultados, 1)
+        for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
     )
 
-    # 5. Montar o prompt final
+    # 5. Montar prompt
     mensagem = prompt_template.format_messages(
         contexto=contexto, pergunta=entrada.pergunta
     )
 
-    # 6. Gerar a resposta com o Llama
+    # 6. Gerar resposta
     resposta_llm = llm.invoke(mensagem)
+    texto_resposta = resposta_llm.content
 
-    # Montar a lista de fontes (rastreabilidade)
+    # Salva a resposta do agente (com os chunks usados) e pega o id
+    cursor.execute(
+        """
+        INSERT INTO mensagens (sessao_id, papel, conteudo, chunks_usados)
+        VALUES (%s, 'agente', %s, %s)
+        RETURNING id;
+        """,
+        (entrada.sessao_id, texto_resposta, chunks_ids),
+    )
+    mensagem_id = cursor.fetchone()[0]
+
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+
     fontes = [
         FonteSaida(trecho=i, titulo=titulo, similaridade=round(sim, 3))
-        for i, (conteudo, titulo, sim) in enumerate(resultados, 1)
+        for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
     ]
-
-    return RespostaSaida(resposta=resposta_llm.content, fontes=fontes)
+    return RespostaSaida(mensagem_id=mensagem_id, resposta=texto_resposta, fontes=fontes)
 
 
 # ------------------------------------------------------------
-# ENDPOINT: GET / (só para testar se a API está no ar)
+# ENDPOINT: feedback (RF09)
+# ------------------------------------------------------------
+@app.post("/feedback", response_model=OkSaida)
+def feedback(entrada: FeedbackEntrada):
+    """Registra a avaliação (1-5) de uma resposta do agente."""
+    if entrada.nota < 1 or entrada.nota > 5:
+        raise HTTPException(status_code=400, detail="A nota deve ser entre 1 e 5.")
+
+    conexao = get_conexao()
+    cursor = conexao.cursor()
+    cursor.execute(
+        "UPDATE mensagens SET feedback_usuario = %s WHERE id = %s AND papel = 'agente';",
+        (entrada.nota, entrada.mensagem_id),
+    )
+    afetadas = cursor.rowcount
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+
+    if afetadas == 0:
+        raise HTTPException(status_code=404, detail="Mensagem não encontrada.")
+    return OkSaida(ok=True, detalhe="Feedback registrado.")
+
+
+# ------------------------------------------------------------
+# ENDPOINT: encerrar sessão (RF07)
+# ------------------------------------------------------------
+@app.post("/sessao/encerrar", response_model=OkSaida)
+def encerrar_sessao(entrada: SessaoSaida):
+    """
+    Encerra a sessão (marca encerrada_em) e descarta o histórico
+    de mensagens dela, em conformidade com o RNF02 (não persistência).
+    """
+    conexao = get_conexao()
+    cursor = conexao.cursor()
+
+    # Marca a sessão como encerrada
+    cursor.execute(
+        "UPDATE sessoes SET encerrada_em = CURRENT_TIMESTAMP WHERE id = %s;",
+        (entrada.sessao_id,),
+    )
+
+    # Descarta o histórico de mensagens da sessão (RNF02).
+    cursor.execute(
+        "DELETE FROM mensagens WHERE sessao_id = %s;",
+        (entrada.sessao_id,),
+    )
+
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+    return OkSaida(ok=True, detalhe="Sessão encerrada e histórico descartado.")
+
+
+# ------------------------------------------------------------
+# ENDPOINT: status
 # ------------------------------------------------------------
 @app.get("/")
 def raiz():
