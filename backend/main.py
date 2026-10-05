@@ -16,6 +16,7 @@ Página de testes:
   http://localhost:8000/docs
 ============================================================
 """
+import os
 import psycopg2
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -23,7 +24,10 @@ from pydantic import BaseModel
 from sentence_transformers import SentenceTransformer
 from langchain_ollama import ChatOllama
 from langchain_core.prompts import ChatPromptTemplate
+from dotenv import load_dotenv
+from langchain_huggingface import ChatHuggingFace, HuggingFaceEndpoint
 
+load_dotenv()  # carrega variáveis do .env
 # ------------------------------------------------------------
 # CONFIGURAÇÕES
 # ------------------------------------------------------------
@@ -104,7 +108,17 @@ print("Carregando modelo de embeddings...")
 modelo_emb = SentenceTransformer(MODELO_EMBEDDING)
 
 print("Preparando o Llama...")
-llm = ChatOllama(model=MODELO_LLM, temperature=TEMPERATURA)
+# Local (desenvolvimento, mais lento):
+# llm = ChatOllama(model=MODELO_LLM, temperature=TEMPERATURA)
+
+_hf_endpoint = HuggingFaceEndpoint(
+    repo_id="meta-llama/Llama-3.1-8B-Instruct",
+    task="text-generation",
+    huggingfacehub_api_token=os.getenv("HF_TOKEN"),
+    temperature=TEMPERATURA,
+    max_new_tokens=512,
+)
+llm = ChatHuggingFace(llm=_hf_endpoint)
 
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT),
