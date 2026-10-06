@@ -117,6 +117,7 @@ function App() {
           carregando={carregando}
           onAvaliar={aoAvaliar}
           refFim={fimDasMensagens}
+          onSugestao={aoEnviar}
         />
 
         <CampoEntrada onEnviar={aoEnviar} desabilitado={carregando || !sessaoId} />
