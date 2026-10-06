@@ -56,6 +56,8 @@ diga honestamente que não possui essa informação na base de conhecimento.
 Você NÃO faz diagnósticos, NÃO prescreve tratamentos e NÃO substitui um profissional.
 4. Use uma linguagem acolhedora, clara e acessível.
 5. Responda em português do Brasil.
+6. Seja conciso e objetivo. Responda em no máximo 3 ou 4 parágrafos curtos, \
+indo direto ao ponto, sem repetir informações.
 
 CONTEXTO (trechos recuperados da obra de Beck):
 {contexto}
@@ -116,7 +118,7 @@ _hf_endpoint = HuggingFaceEndpoint(
     task="text-generation",
     huggingfacehub_api_token=os.getenv("HF_TOKEN"),
     temperature=TEMPERATURA,
-    max_new_tokens=512,
+    max_new_tokens=350,
 )
 llm = ChatHuggingFace(llm=_hf_endpoint)
 
@@ -133,7 +135,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
 
 # ------------------------------------------------------------
 # Helper: abrir conexão com o banco
@@ -170,7 +171,6 @@ class OkSaida(BaseModel):
     ok: bool
     detalhe: str
 
-
 # ------------------------------------------------------------
 # ENDPOINT: iniciar sessão (UC01)
 # ------------------------------------------------------------
@@ -185,7 +185,6 @@ def iniciar_sessao():
     cursor.close()
     conexao.close()
     return SessaoSaida(sessao_id=sessao_id)
-
 
 # ------------------------------------------------------------
 # Função de busca vetorial
@@ -227,13 +226,11 @@ def contem_termo_critico(pergunta):
     texto = pergunta.lower()
     return any(termo in texto for termo in TERMOS_CRITICOS)
 
-
 def detectar_sofrimento(pergunta):
     """
     Detecta sofrimento agudo em duas camadas:
-    1. Lista de termos críticos (determinística, confiável para casos graves)
-    2. Classificação pelo Llama (para casos mais sutis)
-    Em caso de dúvida, erra para o lado seguro (encaminha).
+    1. Lista de termos críticos (determinística)
+    2. Classificação pelo Llama (casos sutis)
     """
     # Camada 1: termos críticos explícitos -> encaminha imediatamente
     if contem_termo_critico(pergunta):
@@ -246,14 +243,16 @@ def detectar_sofrimento(pergunta):
         resposta = llm.invoke(prompt)
         texto = resposta.content.strip().upper()
         print(f"[RF08 DEBUG] Pergunta: {pergunta!r} -> Llama: {texto!r}")
-        if "SIM" in texto:
+
+        # Lógica robusta: só considera crise se a resposta for CURTA e contiver SIM.
+        # Se o modelo "se recusou" (resposta longa), ignora e segue normal,
+        # pois a camada 1 já garante os casos graves explícitos.
+        if len(texto) <= 10 and "SIM" in texto:
             return True
-        if texto.startswith("NAO") or texto.startswith("NÃO"):
-            return False
-        return False  # resposta normal -> segue fluxo normal
+        return False
     except Exception as e:
         print(f"[RF08 DEBUG] ERRO: {e}")
-        return False  # erro na camada 2 não deve bloquear perguntas normais
+        return False
 
 # ------------------------------------------------------------
 # ENDPOINT: chat (RF01-RF05)

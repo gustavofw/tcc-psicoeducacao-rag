@@ -1,14 +1,8 @@
 // ============================================================
 // App.jsx - A tela principal (junta todos os componentes)
 // ============================================================
-// Aqui fica a "inteligência" do front-end:
-//  - guarda o estado (sessão, mensagens, carregando)
-//  - inicia a sessão quando a página abre
-//  - envia perguntas e recebe respostas da API
-//  - envia o feedback
-// ============================================================
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import BarraLateral from "./components/BarraLateral";
 import ListaMensagens from "./components/ListaMensagens";
 import CampoEntrada from "./components/CampoEntrada";
@@ -17,9 +11,17 @@ import "./App.css";
 
 function App() {
   // --- ESTADOS (a "memória" da tela) ---
-  const [sessaoId, setSessaoId] = useState(null);   // id da sessão atual
-  const [mensagens, setMensagens] = useState([]);   // lista de mensagens na tela
-  const [carregando, setCarregando] = useState(false); // se está esperando o agente
+  const [sessaoId, setSessaoId] = useState(null);
+  const [mensagens, setMensagens] = useState([]);
+  const [carregando, setCarregando] = useState(false);
+
+  // referência para o fim da lista (usada no scroll automático)
+  const fimDasMensagens = useRef(null);
+
+  // rola automaticamente para a última mensagem sempre que a lista muda
+  useEffect(() => {
+    fimDasMensagens.current?.scrollIntoView({ behavior: "smooth" });
+  }, [mensagens, carregando]);
 
   // --- Ao abrir a página, inicia a sessão automaticamente (UC01) ---
   useEffect(() => {
@@ -27,13 +29,12 @@ function App() {
       try {
         const id = await iniciarSessao();
         setSessaoId(id);
-        // mensagem de boas-vindas do agente
         setMensagens([
           {
             papel: "agente",
             texto:
               "Olá! Sou o PsicoBot. Posso explicar conceitos da Terapia Cognitivo-Comportamental. Como posso ajudar?",
-            mensagemId: null, // boas-vindas não recebe feedback
+            mensagemId: null,
           },
         ]);
       } catch (erro) {
@@ -42,25 +43,22 @@ function App() {
       }
     }
     comecar();
-  }, []); // [] = roda só uma vez, quando a página abre
+  }, []);
 
   // --- Enviar uma pergunta ---
   async function aoEnviar(pergunta) {
-    // 1. adiciona a mensagem do usuário na tela imediatamente
     setMensagens((atual) => [...atual, { papel: "usuario", texto: pergunta }]);
     setCarregando(true);
 
     try {
-      // 2. chama a API (isso pode demorar por causa do Llama local)
       const dados = await enviarPergunta(sessaoId, pergunta);
-
-      // 3. adiciona a resposta do agente na tela
       setMensagens((atual) => [
         ...atual,
         {
           papel: "agente",
           texto: dados.resposta,
-          mensagemId: dados.mensagem_id, // guarda o id para o feedback
+          mensagemId: dados.mensagem_id,
+          fontes: dados.fontes, // guarda as fontes para exibir na tela
         },
       ]);
     } catch (erro) {
@@ -86,7 +84,7 @@ function App() {
   // --- Nova conversa (encerra a atual e inicia outra) ---
   async function aoNovaConversa() {
     try {
-      if (sessaoId) await encerrarSessao(sessaoId); // RF07
+      if (sessaoId) await encerrarSessao(sessaoId);
       const novoId = await iniciarSessao();
       setSessaoId(novoId);
       setMensagens([
@@ -118,6 +116,7 @@ function App() {
           mensagens={mensagens}
           carregando={carregando}
           onAvaliar={aoAvaliar}
+          refFim={fimDasMensagens}
         />
 
         <CampoEntrada onEnviar={aoEnviar} desabilitado={carregando || !sessaoId} />
