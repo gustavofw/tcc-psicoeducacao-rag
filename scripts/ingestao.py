@@ -47,8 +47,8 @@ MODELO_EMBEDDING = "paraphrase-multilingual-MiniLM-L12-v2"
 # não tokens. Como ~1 token ≈ 4 caracteres, usamos ~2000 caracteres para
 # chegar perto de 500 tokens. O overlap mantém um pouco de contexto entre
 # pedaços vizinhos, para não "cortar" ideias no meio.
-TAMANHO_CHUNK = 1000       # ~500 tokens
-OVERLAP_CHUNK = 150        # ~50 tokens de sobreposição
+TAMANHO_CHUNK = 500      # 125 tokens
+OVERLAP_CHUNK = 75        # 15 tokens de sobreposição
 
 
 # ------------------------------------------------------------

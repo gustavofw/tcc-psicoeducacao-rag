@@ -105,10 +105,12 @@ function App() {
 
       <div className="area-chat">
         <div className="cabecalho">
-          <div className="avatar">P</div>
-          <div>
+          <div className="cabecalho-info">
             <div className="cabecalho-nome">PsicoBot</div>
             <div className="cabecalho-sub">Orientação psicoeducativa baseada em TCC</div>
+          </div>
+          <div className="cabecalho-cvv">
+            Em crise? <strong>CVV 188</strong> (24h)
           </div>
         </div>
 

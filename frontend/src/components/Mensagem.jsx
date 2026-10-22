@@ -19,9 +19,12 @@ function Mensagem({ papel, texto, fontes }) {
         <div className="fontes">
           <span className="fontes-titulo">Fontes consultadas:</span>
           {fontes.map((f, i) => (
-            <span key={i} className="fonte-item">
-              {f.titulo} (similaridade {f.similaridade})
-            </span>
+            <div key={i} className="fonte-item">
+              <span className="fonte-cabecalho">
+                {i + 1}. {f.titulo} (similaridade {f.similaridade})
+              </span>
+              <span className="fonte-trecho">"{f.conteudo}"</span>
+            </div>
           ))}
         </div>
       )}

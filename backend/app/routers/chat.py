@@ -1,0 +1,136 @@
+"""Endpoints da API: sessão, chat, feedback."""
+from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
+from app.services.db import get_conexao
+from app.services.rag_service import buscar_chunks, gerar_resposta
+from app.services.seguranca import detectar_sofrimento
+from app.core.config import MENSAGEM_ENCAMINHAMENTO
+
+router = APIRouter()
+
+
+# --- Modelos de dados ---
+class PerguntaEntrada(BaseModel):
+    sessao_id: int
+    pergunta: str
+
+class FonteSaida(BaseModel):
+    trecho: int
+    titulo: str
+    similaridade: float
+    conteudo: str   
+
+class RespostaSaida(BaseModel):
+    mensagem_id: int
+    resposta: str
+    fontes: list[FonteSaida]
+
+class SessaoSaida(BaseModel):
+    sessao_id: int
+
+class FeedbackEntrada(BaseModel):
+    mensagem_id: int
+    nota: int
+
+class OkSaida(BaseModel):
+    ok: bool
+    detalhe: str
+
+
+# --- Iniciar sessão (UC01) ---
+@router.post("/sessao/iniciar", response_model=SessaoSaida)
+def iniciar_sessao():
+    conexao = get_conexao()
+    cursor = conexao.cursor()
+    cursor.execute("INSERT INTO sessoes DEFAULT VALUES RETURNING id;")
+    sessao_id = cursor.fetchone()[0]
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+    return SessaoSaida(sessao_id=sessao_id)
+
+
+# --- Chat (RF01-RF05 + RF08) ---
+@router.post("/chat", response_model=RespostaSaida)
+def chat(entrada: PerguntaEntrada):
+    conexao = get_conexao()
+    cursor = conexao.cursor()
+
+    # salva a mensagem do usuário
+    cursor.execute(
+        "INSERT INTO mensagens (sessao_id, papel, conteudo) VALUES (%s, 'usuario', %s);",
+        (entrada.sessao_id, entrada.pergunta),
+    )
+
+    # RF08 - verifica sofrimento agudo
+    if detectar_sofrimento(entrada.pergunta):
+        cursor.execute(
+            "INSERT INTO mensagens (sessao_id, papel, conteudo) VALUES (%s, 'agente', %s) RETURNING id;",
+            (entrada.sessao_id, MENSAGEM_ENCAMINHAMENTO),
+        )
+        mensagem_id = cursor.fetchone()[0]
+        conexao.commit()
+        cursor.close()
+        conexao.close()
+        return RespostaSaida(mensagem_id=mensagem_id, resposta=MENSAGEM_ENCAMINHAMENTO, fontes=[])
+
+    # fluxo RAG normal
+    resultados = buscar_chunks(cursor, entrada.pergunta)
+    chunks_ids = [r[0] for r in resultados]
+    texto_resposta = gerar_resposta(entrada.pergunta, resultados)
+
+    cursor.execute(
+        "INSERT INTO mensagens (sessao_id, papel, conteudo, chunks_usados) VALUES (%s, 'agente', %s, %s) RETURNING id;",
+        (entrada.sessao_id, texto_resposta, chunks_ids),
+    )
+    mensagem_id = cursor.fetchone()[0]
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+
+    fontes = [
+        FonteSaida(
+            trecho=i,
+            titulo=titulo,
+            similaridade=round(sim, 3),
+            conteudo=conteudo[:200] + "..."   
+        )
+        for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
+    ]
+    return RespostaSaida(mensagem_id=mensagem_id, resposta=texto_resposta, fontes=fontes)
+
+
+# --- Feedback (RF09) ---
+@router.post("/feedback", response_model=OkSaida)
+def feedback(entrada: FeedbackEntrada):
+    if entrada.nota < 1 or entrada.nota > 5:
+        raise HTTPException(status_code=400, detail="A nota deve ser entre 1 e 5.")
+    conexao = get_conexao()
+    cursor = conexao.cursor()
+    cursor.execute(
+        "UPDATE mensagens SET feedback_usuario = %s WHERE id = %s AND papel = 'agente';",
+        (entrada.nota, entrada.mensagem_id),
+    )
+    afetadas = cursor.rowcount
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+    if afetadas == 0:
+        raise HTTPException(status_code=404, detail="Mensagem não encontrada.")
+    return OkSaida(ok=True, detalhe="Feedback registrado.")
+
+
+# --- Encerrar sessão (RF07 + RNF02) ---
+@router.post("/sessao/encerrar", response_model=OkSaida)
+def encerrar_sessao(entrada: SessaoSaida):
+    conexao = get_conexao()
+    cursor = conexao.cursor()
+    cursor.execute(
+        "UPDATE sessoes SET encerrada_em = CURRENT_TIMESTAMP WHERE id = %s;",
+        (entrada.sessao_id,),
+    )
+    cursor.execute("DELETE FROM mensagens WHERE sessao_id = %s;", (entrada.sessao_id,))
+    conexao.commit()
+    cursor.close()
+    conexao.close()
+    return OkSaida(ok=True, detalhe="Sessão encerrada e histórico descartado.")
