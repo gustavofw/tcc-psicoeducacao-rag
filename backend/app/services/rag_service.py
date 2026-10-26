@@ -27,6 +27,13 @@ if PROVEDOR_LLM == "openrouter":
         temperature=TEMPERATURA,
         api_key=OPENROUTER_API_KEY,
         base_url="https://openrouter.ai/api/v1",
+        max_tokens=MAX_TOKENS,
+        extra_body={
+            "provider": {
+                "data_collection": "deny",
+                "allow_fallbacks": False,
+            }
+        },
     )
 elif PROVEDOR_LLM == "groq":
     from langchain_groq import ChatGroq
