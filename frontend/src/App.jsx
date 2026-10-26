@@ -6,7 +6,7 @@ import { useState, useEffect, useRef } from "react";
 import BarraLateral from "./components/BarraLateral";
 import ListaMensagens from "./components/ListaMensagens";
 import CampoEntrada from "./components/CampoEntrada";
-import { iniciarSessao, enviarPergunta, enviarFeedback, encerrarSessao } from "./api";
+import { iniciarSessao, enviarPergunta, enviarFeedback, encerrarSessao, validarAcesso } from "./api";
 import "./App.css";
 
 function App() {
@@ -14,6 +14,9 @@ function App() {
   const [sessaoId, setSessaoId] = useState(null);
   const [mensagens, setMensagens] = useState([]);
   const [carregando, setCarregando] = useState(false);
+  const [acessoLiberado, setAcessoLiberado] = useState(false);
+  const [codigoDigitado, setCodigoDigitado] = useState("");
+  const [erroAcesso, setErroAcesso] = useState("");
 
   // referência para o fim da lista (usada no scroll automático)
   const fimDasMensagens = useRef(null);
@@ -97,6 +100,44 @@ function App() {
     } catch (erro) {
       console.error(erro);
     }
+  }
+
+  async function aoValidarCodigo(e) {
+    e.preventDefault();
+    const valido = await validarAcesso(codigoDigitado);
+    if (valido) {
+      setAcessoLiberado(true);
+      setErroAcesso("");
+    } else {
+      setErroAcesso("Código inválido. Verifique e tente novamente.");
+    }
+  }
+
+    // Tela de código de acesso (só avaliadores)
+  if (!acessoLiberado) {
+    return (
+      <div className="tela-acesso">
+        <div className="caixa-acesso">
+          <h2>PsicoBot</h2>
+          <p>Protótipo acadêmico de psicoeducação em TCC.<br />
+             Digite o código de acesso fornecido para avaliadores.</p>
+          <form onSubmit={aoValidarCodigo}>
+            <input
+              type="password"
+              value={codigoDigitado}
+              onChange={(e) => setCodigoDigitado(e.target.value)}
+              placeholder="Código de acesso"
+            />
+            <button type="submit">Entrar</button>
+          </form>
+          {erroAcesso && <p className="erro-acesso">{erroAcesso}</p>}
+          <p className="aviso-acesso">
+            Este é um protótipo de pesquisa e não substitui atendimento psicológico.
+            Em caso de crise, ligue 188 (CVV).
+          </p>
+        </div>
+      </div>
+    );
   }
 
   return (

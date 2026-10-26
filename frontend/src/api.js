@@ -6,8 +6,8 @@
 // ============================================================
 
 // Endereço da sua API. Em desenvolvimento é localhost:8000.
-// Quando publicar no Railway, troca por esta URL.
-const API_URL = "http://localhost:8000";
+// Em desenvolvimento usa localhost; em produção, a URL vem da variável de ambiente
+const API_URL = import.meta.env.VITE_API_URL || "http://localhost:8000";
 
 // ------------------------------------------------------------
 // Inicia uma nova sessão de conversa (UC01)
@@ -30,10 +30,14 @@ export async function enviarPergunta(sessaoId, pergunta) {
   const resposta = await fetch(`${API_URL}/chat`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ sessao_id: sessaoId, pergunta: pergunta }),
+    body: JSON.stringify({
+      sessao_id: sessaoId,
+      pergunta: pergunta,
+      codigo: codigoAcesso,   // envia o código junto
+    }),
   });
   if (!resposta.ok) throw new Error("Erro ao enviar pergunta");
-  return await resposta.json(); // { mensagem_id, resposta, fontes }
+  return await resposta.json();
 }
 
 // ------------------------------------------------------------
@@ -60,4 +64,19 @@ export async function encerrarSessao(sessaoId) {
   });
   if (!resposta.ok) throw new Error("Erro ao encerrar sessão");
   return await resposta.json();
+}
+
+// guarda o código de acesso validado, para usar nas próximas chamadas
+let codigoAcesso = "";
+
+export async function validarAcesso(codigo) {
+  const resposta = await fetch(`${API_URL}/validar-acesso`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ codigo }),
+  });
+  if (resposta.ok) {
+    codigoAcesso = codigo;  // guarda para usar no /chat
+  }
+  return resposta.ok;
 }
