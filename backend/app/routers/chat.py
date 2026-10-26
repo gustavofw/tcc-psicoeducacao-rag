@@ -1,11 +1,14 @@
 """Endpoints da API: sessão, chat, feedback."""
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from app.services.db import get_conexao
 from app.services.rag_service import buscar_chunks, gerar_resposta
 from app.services.seguranca import detectar_sofrimento
-from app.core.config import MENSAGEM_ENCAMINHAMENTO
+from app.core.config import MENSAGEM_ENCAMINHAMENTO, CODIGO_ACESSO
 
+limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
 
@@ -13,6 +16,7 @@ router = APIRouter()
 class PerguntaEntrada(BaseModel):
     sessao_id: int
     pergunta: str
+    codigo: str = ""
 
 class FonteSaida(BaseModel):
     trecho: int
@@ -36,6 +40,14 @@ class OkSaida(BaseModel):
     ok: bool
     detalhe: str
 
+class AcessoEntrada(BaseModel):
+    codigo: str
+
+@router.post("/validar-acesso", response_model=OkSaida)
+def validar_acesso(entrada: AcessoEntrada):
+    if CODIGO_ACESSO and entrada.codigo == CODIGO_ACESSO:
+        return OkSaida(ok=True, detalhe="Acesso liberado.")
+    raise HTTPException(status_code=401, detail="Código de acesso inválido.")
 
 # --- Iniciar sessão (UC01) ---
 @router.post("/sessao/iniciar", response_model=SessaoSaida)
@@ -52,7 +64,12 @@ def iniciar_sessao():
 
 # --- Chat (RF01-RF05 + RF08) ---
 @router.post("/chat", response_model=RespostaSaida)
-def chat(entrada: PerguntaEntrada):
+@limiter.limit("20/minute")
+def chat(request: Request, entrada: PerguntaEntrada):
+    # valida código de acesso
+    if CODIGO_ACESSO and entrada.codigo != CODIGO_ACESSO:
+        raise HTTPException(status_code=401, detail="Código de acesso inválido.")
+
     conexao = get_conexao()
     cursor = conexao.cursor()
 

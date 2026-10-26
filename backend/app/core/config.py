@@ -16,7 +16,7 @@ DB_CONFIG = {
 # --- Modelos ---
 MODELO_EMBEDDING = "paraphrase-multilingual-MiniLM-L12-v2"
 
-# Provedor do LLM: "ollama" (local) ou "groq" (nuvem) — configurável pelo .env
+# Provedor do LLM: "ollama" (local), "groq" ou "openrouter" (nuvem) — configurável pelo .env
 PROVEDOR_LLM = os.getenv("PROVEDOR_LLM", "ollama")
 MODELO_OLLAMA = "llama3.1"
 MODELO_GROQ = "llama-3.1-8b-instant"
@@ -87,3 +87,10 @@ MENSAGEM_ENCAMINHAMENTO = (
     "Se houver risco imediato à sua vida, ligue 192 (SAMU) ou vá ao serviço de "
     "emergência mais próximo."
 )
+
+# CORS: endereços do front-end permitidos (separados por vírgula no .env)
+FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
+ORIGINS_PERMITIDAS = [url.strip() for url in FRONTEND_URL.split(",") if url.strip()]
+
+# Código de acesso para avaliadores
+CODIGO_ACESSO = os.getenv("CODIGO_ACESSO", "")

@@ -16,12 +16,11 @@ def contem_termo_critico(pergunta):
     texto = pergunta.lower()
     return any(termo in texto for termo in TERMOS_CRITICOS)
 
-
 def detectar_sofrimento(pergunta):
     """Detecta sofrimento agudo (camada 1: lista; camada 2: Llama)."""
     # Camada 1: termos críticos explícitos -> encaminha imediatamente
     if contem_termo_critico(pergunta):
-        print(f"[RF08] Termo crítico detectado: {pergunta!r}")
+        print("[RF08] Termo crítico detectado na camada 1.")
         return True
 
     # Camada 2: classificação pelo Llama (casos sutis)
@@ -29,7 +28,7 @@ def detectar_sofrimento(pergunta):
         prompt = PROMPT_DETECCAO.format(mensagem=pergunta)
         resposta = llm.invoke(prompt)
         texto = resposta.content.strip().upper()
-        print(f"[RF08] {pergunta!r} -> Llama: {texto!r}")
+        print(f"[RF08] Classificação da camada 2: {texto!r}")
 
         # Resposta curta e clara "NAO" -> sem risco
         if texto in ("NAO", "NÃO", "NAO.", "NÃO."):
