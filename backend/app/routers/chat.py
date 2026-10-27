@@ -11,7 +11,6 @@ from app.core.config import MENSAGEM_ENCAMINHAMENTO, CODIGO_ACESSO
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
 
-
 # --- Modelos de dados ---
 class PerguntaEntrada(BaseModel):
     sessao_id: int
@@ -44,7 +43,8 @@ class AcessoEntrada(BaseModel):
     codigo: str
 
 @router.post("/validar-acesso", response_model=OkSaida)
-def validar_acesso(entrada: AcessoEntrada):
+@limiter.limit("5/minute")
+def validar_acesso(request: Request, entrada: AcessoEntrada):
     if CODIGO_ACESSO and entrada.codigo == CODIGO_ACESSO:
         return OkSaida(ok=True, detalhe="Acesso liberado.")
     raise HTTPException(status_code=401, detail="Código de acesso inválido.")

@@ -5,6 +5,8 @@ from dotenv import load_dotenv
 load_dotenv()
 
 # --- Banco de dados ---
+# Na nuvem (Render/Neon) usa DATABASE_URL; localmente cai no Docker
+DATABASE_URL = os.getenv("DATABASE_URL")
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "port": int(os.getenv("DB_PORT", "5433")),
@@ -15,6 +17,7 @@ DB_CONFIG = {
 
 # --- Modelos ---
 MODELO_EMBEDDING = "paraphrase-multilingual-MiniLM-L12-v2"
+BIBLIOTECA_EMBEDDING = os.getenv("BIBLIOTECA_EMBEDDING", "sentence-transformers")
 
 # Provedor do LLM: "ollama" (local), "groq" ou "openrouter" (nuvem) — configurável pelo .env
 PROVEDOR_LLM = os.getenv("PROVEDOR_LLM", "ollama")
@@ -24,11 +27,13 @@ GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # OpenRouter (nuvem, mantém o Llama 3.1 8B)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 MODELO_OPENROUTER = "meta-llama/llama-3.1-8b-instruct"
+# Provedor fixo no OpenRouter (parecer 3.1) — definido no .env / Render
+PROVEDOR_OPENROUTER = os.getenv("PROVEDOR_OPENROUTER", "")
 
 # --- Parâmetros ---
 TOP_K = 5
 TEMPERATURA = 0.3
-MAX_TOKENS = 350
+MAX_TOKENS = 600
 
 # Limiar de similaridade: abaixo disso, considera que não há conteúdo relevante
 LIMIAR_SIMILARIDADE = 0.35

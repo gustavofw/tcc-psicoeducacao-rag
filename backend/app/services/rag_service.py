@@ -1,9 +1,9 @@
 """Lógica do RAG: embeddings, busca vetorial e geração de resposta."""
-from sentence_transformers import SentenceTransformer
 from langchain_core.prompts import ChatPromptTemplate
 
 from app.core.config import (
-    MODELO_EMBEDDING, PROVEDOR_LLM, MODELO_OLLAMA, MODELO_GROQ, GROQ_API_KEY,
+    MODELO_EMBEDDING, BIBLIOTECA_EMBEDDING,
+    PROVEDOR_LLM, MODELO_OLLAMA, MODELO_GROQ, GROQ_API_KEY,
     TOP_K, TEMPERATURA, MAX_TOKENS, SYSTEM_PROMPT, LIMIAR_SIMILARIDADE,
 )
 
@@ -14,26 +14,39 @@ MENSAGEM_FORA_ESCOPO = (
     "cognitivas, a tríade cognitiva, entre outros temas da TCC."
 )
 
-# --- Inicialização (uma vez) ---
-print("Carregando modelo de embeddings...")
-modelo_emb = SentenceTransformer(MODELO_EMBEDDING)
+# --- Inicialização do modelo de embeddings (uma vez) ---
+# Local: SentenceTransformers (padrão). Render: fastembed (menos memória).
+print(f"Carregando modelo de embeddings ({BIBLIOTECA_EMBEDDING})...")
+if BIBLIOTECA_EMBEDDING == "fastembed":
+    from fastembed import TextEmbedding
+    _modelo_emb = TextEmbedding(
+        f"sentence-transformers/{MODELO_EMBEDDING}", cache_dir="modelo_cache"
+    )
 
+    def gerar_embedding(texto):
+        return next(_modelo_emb.embed([texto])).tolist()
+else:
+    from sentence_transformers import SentenceTransformer
+    _modelo_emb = SentenceTransformer(MODELO_EMBEDDING)
+
+    def gerar_embedding(texto):
+        return _modelo_emb.encode(texto).tolist()
+
+# --- Inicialização do LLM ---
 print(f"Preparando o LLM (provedor: {PROVEDOR_LLM})...")
 if PROVEDOR_LLM == "openrouter":
     from langchain_openai import ChatOpenAI
-    from app.core.config import OPENROUTER_API_KEY, MODELO_OPENROUTER
+    from app.core.config import OPENROUTER_API_KEY, MODELO_OPENROUTER, PROVEDOR_OPENROUTER
+    preferencias = {"data_collection": "deny", "allow_fallbacks": False}
+    if PROVEDOR_OPENROUTER:
+        preferencias["order"] = [PROVEDOR_OPENROUTER]
     llm = ChatOpenAI(
         model=MODELO_OPENROUTER,
         temperature=TEMPERATURA,
         api_key=OPENROUTER_API_KEY,
         base_url="https://openrouter.ai/api/v1",
         max_tokens=MAX_TOKENS,
-        extra_body={
-            "provider": {
-                "data_collection": "deny",
-                "allow_fallbacks": False,
-            }
-        },
+        extra_body={"provider": preferencias},
     )
 elif PROVEDOR_LLM == "groq":
     from langchain_groq import ChatGroq
@@ -43,15 +56,16 @@ else:  # ollama (padrão)
     llm = ChatOllama(model=MODELO_OLLAMA, temperature=TEMPERATURA)
 
 # --- Definição do Prompt Template ---
+# O contexto já está dentro do SYSTEM_PROMPT ({contexto}), por isso não se repete aqui
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT),
-    ("human", "Contexto:\n{contexto}\n\nPergunta: {pergunta}")
+    ("human", "Pergunta: {pergunta}")
 ])
 
 
 def buscar_chunks(cursor, pergunta, k=TOP_K):
     """Busca os k trechos mais parecidos com a pergunta no pgvector."""
-    vetor = modelo_emb.encode(pergunta).tolist()
+    vetor = gerar_embedding(pergunta)
     cursor.execute(
         """
         SELECT c.id, c.conteudo, d.titulo, 1 - (c.embedding <=> %s::vector) AS similaridade
@@ -71,12 +85,11 @@ def gerar_resposta(pergunta, resultados):
     if not resultados or resultados[0][3] < LIMIAR_SIMILARIDADE:
         return MENSAGEM_FORA_ESCOPO
 
-    # Corrigido o erro de formatação e quebra de linha da string
     contexto = "\n\n".join(
         f"[Trecho {i} - Fonte: {titulo}]\n{conteudo}"
         for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
     )
-    
+
     mensagem = prompt_template.format_messages(contexto=contexto, pergunta=pergunta)
     resposta = llm.invoke(mensagem)
     return resposta.content

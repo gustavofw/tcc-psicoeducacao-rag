@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+psycopg2-binary
+python-dotenv
+slowapi
+langchain-core
+langchain-openai
+fastembed
+numpy
