@@ -5,5 +5,8 @@ python-dotenv
 slowapi
 langchain-core
 langchain-openai
-fastembed
+onnxruntime
+onnx
+tokenizers
+huggingface_hub
 numpy

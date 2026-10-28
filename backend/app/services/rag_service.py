@@ -15,16 +15,14 @@ MENSAGEM_FORA_ESCOPO = (
 )
 
 # --- Inicialização do modelo de embeddings (uma vez) ---
-# Local: SentenceTransformers (padrão). Render: fastembed (menos memória).
+# Local: SentenceTransformers (padrão). Render: "onnx" (pesos memory-mapped, cabe em 512 MB).
 print(f"Carregando modelo de embeddings ({BIBLIOTECA_EMBEDDING})...")
-if BIBLIOTECA_EMBEDDING == "fastembed":
-    from fastembed import TextEmbedding
-    _modelo_emb = TextEmbedding(
-        f"sentence-transformers/{MODELO_EMBEDDING}", cache_dir="modelo_cache"
-    )
+if BIBLIOTECA_EMBEDDING == "onnx":
+    from app.services.embedder_onnx import EmbedderONNX
+    _modelo_emb = EmbedderONNX()
 
     def gerar_embedding(texto):
-        return next(_modelo_emb.embed([texto])).tolist()
+        return _modelo_emb.embed(texto)
 else:
     from sentence_transformers import SentenceTransformer
     _modelo_emb = SentenceTransformer(MODELO_EMBEDDING)
