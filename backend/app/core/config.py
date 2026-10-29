@@ -86,9 +86,9 @@ MENSAGEM_ENCAMINHAMENTO = (
     "Percebi que você pode estar passando por um momento muito difícil, e quero "
     "que saiba que você não está sozinho(a). Este sistema é educativo e não "
     "substitui o apoio de um profissional. Por favor, procure ajuda especializada:\n\n"
-    "• CVV – 188 (Centro de Valorização da Vida, gratuito, 24h)\n"
+    "• CVV – ligue 188 (gratuito, 24h) ou converse pelo chat em cvv.org.br\n"
     "• SAP – Serviço de Atendimento Psicológico da UNOESC\n"
-    "• CAPS – Centro de Atenção Psicossocial mais próximo de você\n\n"
+    "• UBS ou CAPS – Unidade Básica de Saúde ou Centro de Atenção Psicossocial da sua cidade\n\n"
     "Se houver risco imediato à sua vida, ligue 192 (SAMU) ou vá ao serviço de "
     "emergência mais próximo."
 )

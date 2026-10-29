@@ -4,15 +4,34 @@ import unicodedata
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from app.services.rag_service import llm
 
-# Camada 1: termos críticos explícitos
+
+def _normalizar_texto(texto):
+    """Minúsculas, sem acentos e com espaços simples (para a lista de termos)."""
+    sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
+    return re.sub(r"\s+", " ", sem_acento.lower()).strip()
+
+
+# Camada 1: termos críticos (escritos sem acento; a comparação ignora acentos)
 TERMOS_CRITICOS = [
-    "me matar", "suicídio", "suicidio", "me suicidar", "tirar minha vida",
-    "quero morrer", "vou morrer", "não quero viver", "nao quero viver",
-    "acabar com tudo", "me machucar", "me cortar", "me ferir",
-    "sumir pra sempre", "sumir para sempre", "tirar a própria vida",
-    "não aguento mais viver", "nao aguento mais viver", "melhor morto",
-    "melhor morta", "dar fim na vida", "pôr fim à vida", "por fim a vida",
+    # ideação suicida explícita
+    "me matar", "matar a mim mesmo", "me suicidar", "suicidio", "suicida",
+    "tirar minha vida", "tirar a minha vida", "tirar a propria vida",
+    "acabar com minha vida", "acabar com a minha vida",
+    "dar fim na vida", "dar fim a vida", "dar fim na minha vida",
+    "por fim a vida", "por fim a minha vida",
+    # desejo de morrer / não viver
+    "quero morrer", "queria morrer", "vontade de morrer", "desejo de morrer",
+    "prefiro morrer", "vou morrer", "nao quero viver", "nao quero mais viver",
+    "nao aguento mais viver", "cansei de viver", "sem vontade de viver",
+    "melhor morto", "melhor morta", "seria melhor se eu morresse",
+    "dormir e nao acordar", "nao acordar mais",
+    "sumir pra sempre", "sumir para sempre", "acabar com tudo",
+    # autolesão
+    "me machucar", "me cortar", "me ferir", "me mutilar",
+    "automutilacao", "auto mutilacao", "me jogar de", "me jogar da",
+    "tomar todos os remedios", "overdose",
 ]
+_TERMOS_NORMALIZADOS = [_normalizar_texto(t) for t in TERMOS_CRITICOS]
 
 # Camada 2: instrução do classificador (enquadramento protetor, rótulos neutros)
 INSTRUCAO_CLASSIFICADOR = (
@@ -28,7 +47,6 @@ INSTRUCAO_CLASSIFICADOR = (
     "Responda somente com o rótulo (RISCO ou NORMAL), sem explicações."
 )
 
-# Exemplos em formato de conversa (few-shot)
 EXEMPLOS = [
     ("o que são pensamentos automáticos?", "NORMAL"),
     ("não aguento mais viver", "RISCO"),
@@ -40,14 +58,8 @@ EXEMPLOS = [
 
 
 def contem_termo_critico(pergunta):
-    texto = pergunta.lower()
-    return any(termo in texto for termo in TERMOS_CRITICOS)
-
-
-def _normalizar(texto):
-    """Remove acentos e deixa em maiúsculas."""
-    sem_acento = unicodedata.normalize("NFKD", texto).encode("ascii", "ignore").decode()
-    return sem_acento.upper()
+    texto = _normalizar_texto(pergunta)
+    return any(termo in texto for termo in _TERMOS_NORMALIZADOS)
 
 
 def _montar_mensagens(pergunta):
@@ -59,21 +71,13 @@ def _montar_mensagens(pergunta):
     return mensagens
 
 
-def detectar_sofrimento(pergunta):
-    """Detecta sofrimento agudo (camada 1: lista; camada 2: Llama)."""
-    # Camada 1: termos críticos explícitos -> encaminha imediatamente
-    if contem_termo_critico(pergunta):
-        print("[RF08] Termo crítico detectado na camada 1.")
-        return True
-
-    # Camada 2: classificação pelo Llama (casos sutis)
+def classificar_com_llm(pergunta):
+    """Camada 2: True = risco. Recusa, formato inesperado ou erro -> risco."""
     try:
         resposta = llm.invoke(_montar_mensagens(pergunta))
-        texto = _normalizar(resposta.content.strip())
+        texto = _normalizar_texto(resposta.content).upper()
         palavras = re.findall(r"[A-Z]+", texto)
         print(f"[RF08] Classificação da camada 2: {texto[:40]!r}")
-
-        # Aceita somente um único rótulo; recusas/frases -> risco (segurança)
         if palavras == ["NORMAL"]:
             return False
         if palavras == ["RISCO"]:
@@ -83,3 +87,16 @@ def detectar_sofrimento(pergunta):
     except Exception as e:
         print(f"[RF08] ERRO -> tratado como risco (segurança): {type(e).__name__}")
         return True
+
+
+def detectar_sofrimento(pergunta, modo="combinado"):
+    """
+    modo="combinado" (sistema): lista primeiro; se não detectar, LLM.
+    modo="lista" / modo="llm": usados apenas no Experimento 4.
+    """
+    if modo in ("lista", "combinado") and contem_termo_critico(pergunta):
+        print("[RF08] Termo crítico detectado na camada 1.")
+        return True
+    if modo == "lista":
+        return False
+    return classificar_com_llm(pergunta)
