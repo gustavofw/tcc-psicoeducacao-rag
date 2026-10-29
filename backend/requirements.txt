@@ -7,6 +7,7 @@ langchain-core
 langchain-openai
 onnxruntime
 onnx
-tokenizers
+sentencepiece
+protobuf
 huggingface_hub
 numpy
