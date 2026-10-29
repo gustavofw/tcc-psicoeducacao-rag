@@ -103,6 +103,20 @@ def gerar():
 
 
 def ler_julgamento():
+    """Lê o julgamento: prefere e1_julgamento.xlsx (se existir); senão, o CSV."""
+    xlsx = PASTA / "e1_julgamento.xlsx"
+    if xlsx.exists():
+        try:
+            from openpyxl import load_workbook
+        except ImportError:
+            raise SystemExit("Instale o openpyxl:  py -m pip install openpyxl")
+        ws = load_workbook(xlsx, data_only=True).active
+        linhas = list(ws.iter_rows(values_only=True))
+        cab = [str(c) for c in linhas[0]]
+        return [
+            {c: ("" if v is None else str(v)) for c, v in zip(cab, l)}
+            for l in linhas[1:] if l and l[0] is not None
+        ]
     for codificacao in ("utf-8-sig", "cp1252"):  # o Excel pode salvar em cp1252
         try:
             with open(ARQ_JULGAMENTO, encoding=codificacao) as f:

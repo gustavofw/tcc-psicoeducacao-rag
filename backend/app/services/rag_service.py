@@ -91,3 +91,6 @@ def gerar_resposta(pergunta, resultados):
     mensagem = prompt_template.format_messages(contexto=contexto, pergunta=pergunta)
     resposta = llm.invoke(mensagem)
     return resposta.content
+
+from app.services.memoria import log_memoria
+log_memoria("após carregar modelos")

@@ -7,6 +7,7 @@ from app.services.db import get_conexao
 from app.services.rag_service import buscar_chunks, gerar_resposta
 from app.services.seguranca import detectar_sofrimento
 from app.core.config import MENSAGEM_ENCAMINHAMENTO, CODIGO_ACESSO
+from app.services.memoria import log_memoria
 
 limiter = Limiter(key_func=get_remote_address)
 router = APIRouter()
@@ -114,8 +115,17 @@ def chat(request: Request, entrada: PerguntaEntrada):
         )
         for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
     ]
+    fontes = [
+        FonteSaida(
+            trecho=i,
+            titulo=titulo,
+            similaridade=round(sim, 3),
+            conteudo=conteudo[:200] + "..."
+        )
+        for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
+    ]
+    log_memoria("após /chat")
     return RespostaSaida(mensagem_id=mensagem_id, resposta=texto_resposta, fontes=fontes)
-
 
 # --- Feedback (RF09) ---
 @router.post("/feedback", response_model=OkSaida)

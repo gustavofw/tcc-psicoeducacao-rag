@@ -32,6 +32,6 @@ app.add_middleware(
 app.include_router(chat.router)
 
 
-@app.get("/")
+@app.api_route("/", methods=["GET", "HEAD"])
 def raiz():
     return {"status": "API de Psicoeducação no ar", "docs": "/docs"}
