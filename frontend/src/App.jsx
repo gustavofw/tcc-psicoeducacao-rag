@@ -153,6 +153,13 @@ function App() {
           <div className="cabecalho-cvv">
             Em crise? <strong>CVV 188</strong> (24h)
           </div>
+          <button className="botao-nova-mobile" onClick={aoNovaConversa}>
+            + Nova
+          </button>
+        </div>
+
+        <div className="aviso-mobile">
+          Protótipo acadêmico: não substitui atendimento psicológico.
         </div>
 
         <ListaMensagens

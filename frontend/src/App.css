@@ -490,3 +490,67 @@ body {
 }
 .erro-acesso { color: #c0392b; font-size: 14px; }
 .aviso-acesso { font-size: 12px; color: #666; margin-top: 20px; }
+
+/* ============================================================
+   RESPONSIVIDADE (celular)
+   ============================================================ */
+.app { height: 100vh; height: 100dvh; }
+.tela-acesso { height: 100vh; height: 100dvh; padding: 16px; }
+.caixa-acesso { width: 100%; }
+
+/* elementos que só aparecem no celular */
+.botao-nova-mobile,
+.aviso-mobile { display: none; }
+
+@media (max-width: 768px) {
+  .barra-lateral { display: none; }
+
+  .botao-nova-mobile {
+    display: inline-block;
+    background: linear-gradient(135deg, var(--verde) 0%, var(--verde-escuro) 100%);
+    color: #fff;
+    border: none;
+    border-radius: 10px;
+    padding: 8px 12px;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .aviso-mobile {
+    display: block;
+    background: #fff8f0;
+    border-bottom: 1px solid #f0d9b5;
+    color: #8a6d3b;
+    font-size: 12px;
+    text-align: center;
+    padding: 6px 12px;
+  }
+
+  .cabecalho { padding: 10px 12px; gap: 8px; }
+  .cabecalho-nome { font-size: 16px; }
+  .cabecalho-sub { display: none; }
+  .cabecalho-cvv { padding: 6px 8px; font-size: 12px; white-space: nowrap; }
+
+  .lista-mensagens { padding: 16px 12px; gap: 16px; }
+  .mensagem { max-width: 92%; }
+  .balao { font-size: 15px; padding: 12px 14px; }
+
+  .boas-vindas { padding: 20px 4px; }
+  .boas-vindas-titulo { font-size: 19px; }
+  .sugestoes { grid-template-columns: 1fr; }
+
+  .feedback-botao { width: 38px; height: 38px; }
+
+  .campo-entrada {
+    padding: 10px 12px;
+    padding-bottom: calc(10px + env(safe-area-inset-bottom));
+    gap: 8px;
+  }
+  /* 16px evita o zoom automático do iPhone ao focar o campo */
+  .campo-texto { font-size: 16px; padding: 12px 16px; }
+  .botao-enviar { width: 44px; height: 44px; }
+
+  .caixa-acesso { padding: 28px 20px; }
+  .caixa-acesso input { font-size: 16px; }
+}
