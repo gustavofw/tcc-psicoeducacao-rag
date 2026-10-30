@@ -156,6 +156,13 @@ def encerrar_sessao(entrada: SessaoSaida):
         "UPDATE sessoes SET encerrada_em = CURRENT_TIMESTAMP WHERE id = %s;",
         (entrada.sessao_id,),
     )
+    # RF09: preserva só as notas (sem o texto da conversa) antes de descartar o histórico
+    cursor.execute(
+        "INSERT INTO avaliacoes (nota) "
+        "SELECT feedback_usuario FROM mensagens "
+        "WHERE sessao_id = %s AND feedback_usuario IS NOT NULL;",
+        (entrada.sessao_id,),
+    )
     cursor.execute("DELETE FROM mensagens WHERE sessao_id = %s;", (entrada.sessao_id,))
     conexao.commit()
     cursor.close()
