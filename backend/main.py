@@ -6,7 +6,8 @@ Docs: http://localhost:8000/docs
 """
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from app.routers import chat
+from app.routers import chat, saude
+app.include_router(saude.router)
 from app.core.config import ORIGINS_PERMITIDAS
 from slowapi import Limiter, _rate_limit_exceeded_handler
 from slowapi.util import get_remote_address

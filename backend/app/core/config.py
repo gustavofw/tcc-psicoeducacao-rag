@@ -93,6 +93,13 @@ MENSAGEM_ENCAMINHAMENTO = (
     "emergência mais próximo."
 )
 
+# Mostrada quando o modelo de linguagem está fora do ar (não é a mensagem de crise)
+MENSAGEM_INDISPONIVEL = (
+    "O serviço está temporariamente indisponível. Tente novamente em alguns minutos.\n\n"
+    "Se você estiver passando por um momento difícil, ligue 188 (gratuito, 24h) "
+    "ou acesse cvv.org.br. Em caso de risco imediato, ligue 192 (SAMU)."
+)
+
 # CORS: endereços do front-end permitidos (separados por vírgula no .env)
 FRONTEND_URL = os.getenv("FRONTEND_URL", "http://localhost:5173")
 ORIGINS_PERMITIDAS = [url.strip() for url in FRONTEND_URL.split(",") if url.strip()]

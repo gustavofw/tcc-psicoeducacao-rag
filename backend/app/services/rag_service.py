@@ -44,6 +44,8 @@ if PROVEDOR_LLM == "openrouter":
         api_key=OPENROUTER_API_KEY,
         base_url="https://openrouter.ai/api/v1",
         max_tokens=MAX_TOKENS,
+        max_retries=4,   # tenta de novo, com espera crescente, em erros como o 429
+        timeout=60,
         extra_body={"provider": preferencias},
     )
 elif PROVEDOR_LLM == "groq":

@@ -5,8 +5,8 @@ from slowapi import Limiter
 from slowapi.util import get_remote_address
 from app.services.db import get_conexao
 from app.services.rag_service import buscar_chunks, gerar_resposta
-from app.services.seguranca import detectar_sofrimento
-from app.core.config import MENSAGEM_ENCAMINHAMENTO, CODIGO_ACESSO
+from app.services.seguranca import avaliar_risco, ServicoIndisponivel
+from app.core.config import MENSAGEM_ENCAMINHAMENTO, MENSAGEM_INDISPONIVEL, CODIGO_ACESSO
 from app.services.memoria import log_memoria
 
 limiter = Limiter(key_func=get_remote_address)
@@ -71,17 +71,24 @@ def chat(request: Request, entrada: PerguntaEntrada):
     if CODIGO_ACESSO and entrada.codigo != CODIGO_ACESSO:
         raise HTTPException(status_code=401, detail="Código de acesso inválido.")
 
+    def indisponivel():
+        # falha do serviço: não grava nada e não mostra a mensagem de crise
+        return RespostaSaida(mensagem_id=0, resposta=MENSAGEM_INDISPONIVEL, fontes=[])
+
+    # RF08 - verifica sofrimento agudo
+    try:
+        motivo = avaliar_risco(entrada.pergunta)
+    except ServicoIndisponivel:
+        return indisponivel()
+
     conexao = get_conexao()
     cursor = conexao.cursor()
-
-    # salva a mensagem do usuário
     cursor.execute(
         "INSERT INTO mensagens (sessao_id, papel, conteudo) VALUES (%s, 'usuario', %s);",
         (entrada.sessao_id, entrada.pergunta),
     )
 
-    # RF08 - verifica sofrimento agudo
-    if detectar_sofrimento(entrada.pergunta):
+    if motivo:
         cursor.execute(
             "INSERT INTO mensagens (sessao_id, papel, conteudo) VALUES (%s, 'agente', %s) RETURNING id;",
             (entrada.sessao_id, MENSAGEM_ENCAMINHAMENTO),
@@ -94,12 +101,18 @@ def chat(request: Request, entrada: PerguntaEntrada):
 
     # fluxo RAG normal
     resultados = buscar_chunks(cursor, entrada.pergunta)
-    chunks_ids = [r[0] for r in resultados]
-    texto_resposta = gerar_resposta(entrada.pergunta, resultados)
+    try:
+        texto_resposta = gerar_resposta(entrada.pergunta, resultados)
+    except Exception as e:
+        print(f"[RAG] ERRO na geração: {type(e).__name__}: {str(e)[:200]}", flush=True)
+        conexao.rollback()
+        cursor.close()
+        conexao.close()
+        return indisponivel()
 
     cursor.execute(
         "INSERT INTO mensagens (sessao_id, papel, conteudo, chunks_usados) VALUES (%s, 'agente', %s, %s) RETURNING id;",
-        (entrada.sessao_id, texto_resposta, chunks_ids),
+        (entrada.sessao_id, texto_resposta, [r[0] for r in resultados]),
     )
     mensagem_id = cursor.fetchone()[0]
     conexao.commit()
@@ -107,21 +120,7 @@ def chat(request: Request, entrada: PerguntaEntrada):
     conexao.close()
 
     fontes = [
-        FonteSaida(
-            trecho=i,
-            titulo=titulo,
-            similaridade=round(sim, 3),
-            conteudo=conteudo[:200] + "..."   
-        )
-        for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
-    ]
-    fontes = [
-        FonteSaida(
-            trecho=i,
-            titulo=titulo,
-            similaridade=round(sim, 3),
-            conteudo=conteudo[:200] + "..."
-        )
+        FonteSaida(trecho=i, titulo=titulo, similaridade=round(sim, 3), conteudo=conteudo[:200] + "...")
         for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
     ]
     log_memoria("após /chat")
