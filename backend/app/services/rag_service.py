@@ -65,21 +65,48 @@ prompt_template = ChatPromptTemplate.from_messages([
 ])
 
 
-def buscar_chunks(cursor, pergunta, k=TOP_K):
-    """Busca os k trechos mais parecidos com a pergunta no pgvector.
+def buscar_chunks(cursor, pergunta, k=TOP_K, candidatos=20):
+    """Busca híbrida: vetorial (significado) + texto completo (palavras), combinadas por RRF.
     Retorna: (id, conteudo, titulo, similaridade, documento_id, indice, capitulo, pagina)"""
     vetor = gerar_embedding(pergunta)
     cursor.execute(
         """
+        WITH vet AS (
+            SELECT c.id, ROW_NUMBER() OVER (ORDER BY c.embedding <=> %(v)s::vector) AS pos
+            FROM chunks c
+            ORDER BY c.embedding <=> %(v)s::vector
+            LIMIT %(n)s
+        ),
+        consulta AS (
+            -- todas as palavras (E); se nenhum trecho tiver todas, qualquer uma (OU)
+            SELECT CASE
+                WHEN EXISTS (SELECT 1 FROM chunks WHERE busca @@ plainto_tsquery('portuguese', %(p)s))
+                THEN plainto_tsquery('portuguese', %(p)s)
+                ELSE replace(plainto_tsquery('portuguese', %(p)s)::text, ' & ', ' | ')::tsquery
+            END AS q
+        ),
+        txt AS (
+            SELECT c.id, ROW_NUMBER() OVER (ORDER BY ts_rank_cd(c.busca, consulta.q) DESC) AS pos
+            FROM chunks c, consulta
+            WHERE c.busca @@ consulta.q
+            ORDER BY ts_rank_cd(c.busca, consulta.q) DESC
+            LIMIT %(n)s
+        ),
+        rrf AS (
+            SELECT id, SUM(1.0 / (60 + pos)) AS score
+            FROM (SELECT * FROM vet UNION ALL SELECT * FROM txt) u
+            GROUP BY id
+        )
         SELECT c.id, c.conteudo, d.titulo,
-               1 - (c.embedding <=> %s::vector) AS similaridade,
+               1 - (c.embedding <=> %(v)s::vector) AS similaridade,
                c.documento_id, c.indice, c.capitulo, c.pagina
-        FROM chunks c
+        FROM rrf
+        JOIN chunks c ON c.id = rrf.id
         JOIN documentos d ON d.id = c.documento_id
-        ORDER BY c.embedding <=> %s::vector
-        LIMIT %s;
+        ORDER BY rrf.score DESC
+        LIMIT %(k)s;
         """,
-        (vetor, vetor, k),
+        {"v": vetor, "p": pergunta, "n": candidatos, "k": k},
     )
     return cursor.fetchall()
 
