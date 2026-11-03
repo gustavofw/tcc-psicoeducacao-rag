@@ -26,7 +26,7 @@ MODELO_GROQ = "llama-3.1-8b-instant"
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 # OpenRouter (nuvem, mantém o Llama 3.1 8B)
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-MODELO_OPENROUTER = "meta-llama/llama-3.1-8b-instruct"
+MODELO_OPENROUTER = os.getenv("MODELO_OPENROUTER", "meta-llama/llama-3.1-8b-instruct")
 # Provedor fixo no OpenRouter (parecer 3.1) — definido no .env / Render
 PROVEDOR_OPENROUTER = os.getenv("PROVEDOR_OPENROUTER", "")
 
