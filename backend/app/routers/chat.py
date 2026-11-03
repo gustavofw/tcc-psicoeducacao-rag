@@ -121,8 +121,8 @@ def chat(request: Request, entrada: PerguntaEntrada):
     cursor.close()
     conexao.close()
 
-    if texto_resposta == MENSAGEM_FORA_ESCOPO:
-        fontes = []   # parecer: não mostrar fontes quando não encontrou
+    if texto_resposta == MENSAGEM_FORA_ESCOPO or texto_resposta.startswith(("Não encontrei", "Não posso")):
+        fontes = []
     else:
         fontes = [
             FonteSaida(

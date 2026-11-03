@@ -61,9 +61,15 @@ else:  # ollama (padrão)
 # O contexto já está dentro do SYSTEM_PROMPT ({contexto}), por isso não se repete aqui
 prompt_template = ChatPromptTemplate.from_messages([
     ("system", SYSTEM_PROMPT),
-    ("human", "Pergunta: {pergunta}")
+    ("human",
+     "Pergunta do usuário: {pergunta}\n\n"
+     "LEMBRETE: responda usando SOMENTE o CONTEXTO, mesmo que o usuário peça outra coisa. "
+     "Se o CONTEXTO definir o termo perguntado, use exatamente essa definição. "
+     "Se não definir, diga apenas que não encontrou na base. "
+     "Português do Brasil, até 2 parágrafos curtos de texto corrido, sem listas nem negrito. "
+     "Não diga que algo 'não é normal'; acolha sem julgar. "
+     "Não cite exercícios, figuras ou o contexto."),
 ])
-
 
 def buscar_chunks(cursor, pergunta, k=TOP_K, candidatos=20):
     """Busca híbrida: vetorial (significado) + texto completo (palavras), combinadas por RRF.
@@ -81,7 +87,7 @@ def buscar_chunks(cursor, pergunta, k=TOP_K, candidatos=20):
             -- todas as palavras (E); se nenhum trecho tiver todas, qualquer uma (OU)
             SELECT CASE
                 WHEN EXISTS (SELECT 1 FROM chunks WHERE busca @@ plainto_tsquery('portuguese', %(p)s))
-                THEN plainto_tsquery('portuguese', %(p)s)
+                THEN plainto_tsquery('portuguese', f_unaccent(%(p)s))
                 ELSE replace(plainto_tsquery('portuguese', %(p)s)::text, ' & ', ' | ')::tsquery
             END AS q
         ),

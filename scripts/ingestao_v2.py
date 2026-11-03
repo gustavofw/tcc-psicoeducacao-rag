@@ -60,6 +60,15 @@ REF_AUT = re.compile(r"\b[A-ZÁ-Ú][a-zà-ú\-]+,?\s(?:[A-Z]\.\s?){1,3}[,;&:(]"
 ANO = re.compile(r"\(?\b(19|20)\d{2}[a-z]?\)?")
 
 
+ITEM = re.compile(r"(?:^|\s)\d{1,2}\.\s+[A-ZÁ-Ú]")
+
+
+def eh_tabela(t):
+    """Agenda de atividades (h:/p:) ou lista numerada sem frases: não ensina nada."""
+    frases = len(re.findall(r"[a-zà-ú]{3,}[.!?](\s|$)", t))
+    return len(re.findall(r"\b[hp]:", t)) >= 4 or (len(ITEM.findall(t)) >= 6 and frases <= 2)
+
+
 def eh_referencia(t):
     return len(ANO.findall(t)) >= 2 and len(REF_AUT.findall(t)) >= 3
 
@@ -102,7 +111,7 @@ def processar(obra, splitter):
     docs = splitter.create_documents([texto])
     chunks, descartados = [], 0
     for d in docs:
-        if eh_referencia(d.page_content):
+        if eh_referencia(d.page_content) or eh_tabela(d.page_content):
             descartados += 1
             continue
         pos = bisect.bisect_right(inicios, d.metadata["start_index"]) - 1
@@ -139,7 +148,7 @@ def main():
         caps = sorted({c[2] for c in chunks if c[2]}, key=lambda x: int(x.split()[1]))
         for c in caps: print("   ", c)
         print(f"{obra['titulo'][:45]:45} págs {obra['ini']}-{obra['fim']}: "
-              f"{len(chunks)} chunks ({desc} de referências descartados)")
+              f"{len(chunks)} chunks ({desc} de referências/tabelas descartados)")
         base.append((obra, chunks))
     print("TOTAL:", sum(len(c) for _, c in base), "chunks")
     if a.simular:
