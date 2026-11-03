@@ -11,3 +11,5 @@ scripts/e1_julgamento*
 scripts/resultados_*
 scripts/*.docx
 scripts/*.png
+scripts/planilha_*
+backup_*

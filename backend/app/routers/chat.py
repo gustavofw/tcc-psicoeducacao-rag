@@ -4,9 +4,9 @@ from pydantic import BaseModel
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 from app.services.db import get_conexao
-from app.services.rag_service import buscar_chunks, gerar_resposta
+from app.services.rag_service import buscar_chunks, expandir_contexto, gerar_resposta, MENSAGEM_FORA_ESCOPO
 from app.services.seguranca import avaliar_risco, ServicoIndisponivel
-from app.core.config import MENSAGEM_ENCAMINHAMENTO, MENSAGEM_INDISPONIVEL, CODIGO_ACESSO
+from app.core.config import MENSAGEM_ENCAMINHAMENTO, MENSAGEM_INDISPONIVEL, CODIGO_ACESSO, LIMIAR_SIMILARIDADE
 from app.services.memoria import log_memoria
 
 limiter = Limiter(key_func=get_remote_address)
@@ -101,8 +101,10 @@ def chat(request: Request, entrada: PerguntaEntrada):
 
     # fluxo RAG normal
     resultados = buscar_chunks(cursor, entrada.pergunta)
+    resultados = [r for r in resultados if r[3] >= LIMIAR_SIMILARIDADE]
     try:
-        texto_resposta = gerar_resposta(entrada.pergunta, resultados)
+        blocos = expandir_contexto(cursor, resultados)
+        texto_resposta = gerar_resposta(entrada.pergunta, resultados, blocos)
     except Exception as e:
         print(f"[RAG] ERRO na geração: {type(e).__name__}: {str(e)[:200]}", flush=True)
         conexao.rollback()
@@ -119,10 +121,19 @@ def chat(request: Request, entrada: PerguntaEntrada):
     cursor.close()
     conexao.close()
 
-    fontes = [
-        FonteSaida(trecho=i, titulo=titulo, similaridade=round(sim, 3), conteudo=conteudo[:200] + "...")
-        for i, (cid, conteudo, titulo, sim) in enumerate(resultados, 1)
-    ]
+    if texto_resposta == MENSAGEM_FORA_ESCOPO:
+        fontes = []   # parecer: não mostrar fontes quando não encontrou
+    else:
+        fontes = [
+            FonteSaida(
+                trecho=i,
+                titulo=f"{r[2]}, {r[6]}" if r[6] else r[2],
+                similaridade=round(r[3], 3),
+                conteudo=r[1][:200] + "...",
+            )
+            for i, r in enumerate(resultados, 1)
+        ]
+
     log_memoria("após /chat")
     return RespostaSaida(mensagem_id=mensagem_id, resposta=texto_resposta, fontes=fontes)
 
