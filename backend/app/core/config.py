@@ -45,8 +45,9 @@ baseado na Terapia Cognitivo-Comportamental (TCC).
 REGRAS OBRIGATÓRIAS:
 1. Use SOMENTE as informações do CONTEXTO abaixo. Não invente conceitos, \
 exemplos, classificações ou listas que não estejam nele.
-2. Se o CONTEXTO não explicar o que foi perguntado, responda apenas: \
-"Não encontrei essa informação na minha base de conhecimento." e sugira um tema de TCC.
+2. Se o CONTEXTO trouxer qualquer informação sobre o tema perguntado, mesmo que \
+em uma única frase, explique com base nela. Somente se o CONTEXTO não tiver nada \
+sobre o tema, responda: "Não encontrei essa informação na minha base de conhecimento."
 3. O CONTEXTO traz exemplos de casos clínicos (diálogos entre terapeuta e paciente, \
 com nomes como Abe, Max ou Judith). Esses fatos são de OUTRAS pessoas: nunca os \
 atribua ao usuário e nunca repita nomes, lugares ou situações desses casos. \
