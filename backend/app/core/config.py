@@ -33,7 +33,7 @@ PROVEDOR_OPENROUTER = os.getenv("PROVEDOR_OPENROUTER", "")
 # --- Parâmetros ---
 TOP_K = 5
 TEMPERATURA = 0.3
-MAX_TOKENS = 600
+MAX_TOKENS = 350
 
 # Limiar de similaridade: abaixo disso, considera que não há conteúdo relevante
 LIMIAR_SIMILARIDADE = 0.35

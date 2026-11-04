@@ -1,12 +1,33 @@
 """RF08 - Detecção de sofrimento agudo em duas camadas."""
+import os
 import re
 import unicodedata
 from langchain_core.messages import SystemMessage, HumanMessage, AIMessage
 from app.core.config import PROVEDOR_LLM
 from app.services.rag_service import llm
 
-# Classificador: sem variação e com resposta curta (só na nuvem; o Ollama local usa o padrão)
-_llm_classificador = llm.bind(temperature=0, max_tokens=8) if PROVEDOR_LLM == "openrouter" else llm
+# Classificador do RF08: modelo próprio na nuvem (8B por padrão, o mesmo validado no E4),
+# independente do modelo que gera as respostas. No Ollama local usa o mesmo modelo.
+if PROVEDOR_LLM == "openrouter":
+    from langchain_openai import ChatOpenAI
+    from app.core.config import OPENROUTER_API_KEY, PROVEDOR_OPENROUTER
+    _pref = {"data_collection": "deny", "allow_fallbacks": False}
+    if PROVEDOR_OPENROUTER:
+        _pref["order"] = [PROVEDOR_OPENROUTER]
+    MODELO_CLASSIFICADOR = os.getenv("MODELO_CLASSIFICADOR", "meta-llama/llama-3.1-8b-instruct")
+    print(f"Modelo do classificador RF08: {MODELO_CLASSIFICADOR}", flush=True)
+    _llm_classificador = ChatOpenAI(
+        model=MODELO_CLASSIFICADOR,
+        temperature=0,
+        max_tokens=8,
+        api_key=OPENROUTER_API_KEY,
+        base_url="https://openrouter.ai/api/v1",
+        max_retries=4,
+        timeout=30,
+        extra_body={"provider": _pref},
+    )
+else:
+    _llm_classificador = llm
 
 
 class ServicoIndisponivel(Exception):
