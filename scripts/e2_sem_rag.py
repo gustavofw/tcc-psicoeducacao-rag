@@ -26,7 +26,8 @@ sys.path.insert(0, str(RAIZ / "backend"))
 from app.core.config import MODELO_OPENROUTER, TEMPERATURA, MAX_TOKENS  # noqa: E402
 
 CHAVE = os.getenv("OPENROUTER_API_KEY")
-PROVEDOR = os.getenv("PROVEDOR_OPENROUTER", "deepinfra")
+PROVEDOR = os.getenv("PROVEDOR_GERACAO", os.getenv("PROVEDOR_OPENROUTER", "deepinfra"))
+PROVEDORES = [p.strip() for p in PROVEDOR.split(",") if p.strip()]
 if not CHAVE:
     raise SystemExit("OPENROUTER_API_KEY não encontrada no backend/.env")
 
@@ -45,13 +46,17 @@ NÃO sugere tratamentos e NÃO substitui um profissional de saúde.
 
 
 def main():
-    perguntas = json.loads(
+    dados_json = json.loads(
         (RAIZ / "scripts" / "perguntas_testes.json").read_text(encoding="utf-8")
-    )["E1_E2"]
+    )
+    perguntas = ([("E2", q) for q in dados_json["E1_E2"]]
+                 + [("E2b", q) for q in dados_json["E1b_E2b"]])
+    print(f"Modelo: {MODELO_OPENROUTER} | provedor: {PROVEDOR}")
     linhas = []
-    for i, pergunta in enumerate(perguntas, 1):
-        inicio = time.perf_counter()
-        r = requests.post(
+    for i, (conjunto, pergunta) in enumerate(perguntas, 1):
+        for tentativa in range(5):   # limite de requisições (429): espera e tenta de novo
+          inicio = time.perf_counter()
+          r = requests.post(
             "https://openrouter.ai/api/v1/chat/completions",
             headers={"Authorization": f"Bearer {CHAVE}"},
             json={
@@ -62,22 +67,28 @@ def main():
                 ],
                 "temperature": TEMPERATURA,
                 "max_tokens": MAX_TOKENS,
-                "provider": {"order": [PROVEDOR], "allow_fallbacks": False,
+                "provider": {"order": PROVEDORES, "only": PROVEDORES,
+                             "allow_fallbacks": len(PROVEDORES) > 1,
                              "data_collection": "deny"},
             },
             timeout=180,
-        )
-        tempo = time.perf_counter() - inicio
+          )
+          tempo = time.perf_counter() - inicio
+          if r.status_code not in (429, 500, 502, 503):
+              break
+          espera = 15 * (tentativa + 1)
+          print(f"    HTTP {r.status_code}, aguardando {espera}s...")
+          time.sleep(espera)
         r.raise_for_status()
         dados = r.json()
         resposta = dados["choices"][0]["message"]["content"]
         linhas.append({
-            "n": i, "pergunta": pergunta, "resposta_sem_RAG": resposta,
+            "conjunto": conjunto, "n": i, "pergunta": pergunta, "resposta_sem_RAG": resposta,
             "provedor": dados.get("provider", ""), "tempo_s": round(tempo, 2),
             "classe_E2 (F/P/N)": "", "observacao": "",
         })
         print(f"{i:2}. {tempo:5.1f}s | {dados.get('provider', '')} | {pergunta[:60]}")
-        time.sleep(1)
+        time.sleep(2)
 
     agora = datetime.now().strftime("%Y-%m-%d_%H%M")
     arquivo = RAIZ / "scripts" / f"resultados_e2_sem_rag_{agora}.csv"

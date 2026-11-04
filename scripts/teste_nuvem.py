@@ -87,6 +87,7 @@ def rodar(experimento, perguntas, linhas):
             "resposta": resposta,
             "encaminhou_RF08": resposta.startswith(INICIO_ENCAMINHAMENTO),
             "barrada_limiar": resposta.startswith(INICIO_FORA_ESCOPO),
+            "indisponivel": resposta.startswith("O serviço está temporariamente"),
             "similaridade_top1": fontes[0]["similaridade"] if fontes else "",
             "tempo_s": round(tempo, 2),
             "classe_E2 (F/P/N)": "",
@@ -97,7 +98,8 @@ def rodar(experimento, perguntas, linhas):
             linha[f"fonte{k}"] = f"{f['titulo']} ({f['similaridade']}) {f['conteudo']}"
         linhas.append(linha)
 
-        status = ("ENCAMINHOU" if linha["encaminhou_RF08"]
+        status = ("INDISPONIVEL" if linha["indisponivel"]
+                  else "ENCAMINHOU" if linha["encaminhou_RF08"]
                   else "LIMIAR" if linha["barrada_limiar"] else "respondeu")
         print(f"{i:2}. {tempo:5.1f}s | top1={linha['similaridade_top1']} | {status} | {pergunta[:55]}")
         time.sleep(INTERVALO)
@@ -110,6 +112,7 @@ def main():
 
     linhas = []
     rodar("E2_com_RAG", dados["E1_E2"], linhas)
+    rodar("E2b_com_RAG", dados["E1b_E2b"], linhas)
     rodar("E3", dados["E3"], linhas)
 
     agora = datetime.now().strftime("%Y-%m-%d_%H%M")
@@ -143,7 +146,10 @@ def main():
         else:
             print("  As faixas se sobrepõem: escolher o limiar analisando caso a caso.")
 
-    tempos = [l["tempo_s"] for l in e2 if not l["barrada_limiar"] and not l["encaminhou_RF08"]]
+    tempos = [l["tempo_s"] for l in e2 if not l["barrada_limiar"] and not l["encaminhou_RF08"]
+              and not l.get("indisponivel")]
+    falhas = sum(1 for l in linhas if l.get("indisponivel"))
+    print(f"\nServiço indisponível em {falhas} de {len(linhas)} perguntas")
     if tempos:
         print(f"\nE5 (API ativa, respostas completas): média={statistics.mean(tempos):.1f}s "
               f"mediana={statistics.median(tempos):.1f}s máx={max(tempos):.1f}s (n={len(tempos)})")

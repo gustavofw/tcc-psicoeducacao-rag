@@ -12,8 +12,11 @@ if PROVEDOR_LLM == "openrouter":
     from langchain_openai import ChatOpenAI
     from app.core.config import OPENROUTER_API_KEY, PROVEDOR_OPENROUTER
     _pref = {"data_collection": "deny", "allow_fallbacks": False}
-    if PROVEDOR_OPENROUTER:
-        _pref["order"] = [PROVEDOR_OPENROUTER]
+    _lista = [p.strip() for p in os.getenv("PROVEDOR_CLASSIFICADOR", PROVEDOR_OPENROUTER or "").split(",") if p.strip()]
+    if _lista:
+        _pref["order"] = _lista
+        _pref["only"] = _lista
+        _pref["allow_fallbacks"] = len(_lista) > 1
     MODELO_CLASSIFICADOR = os.getenv("MODELO_CLASSIFICADOR", "meta-llama/llama-3.1-8b-instruct")
     print(f"Modelo do classificador RF08: {MODELO_CLASSIFICADOR}", flush=True)
     _llm_classificador = ChatOpenAI(

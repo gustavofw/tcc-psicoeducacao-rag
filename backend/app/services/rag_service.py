@@ -38,10 +38,13 @@ if PROVEDOR_LLM == "openrouter":
     from app.core.config import OPENROUTER_API_KEY, MODELO_OPENROUTER, PROVEDOR_OPENROUTER
     preferencias = {"data_collection": "deny", "allow_fallbacks": False}
     import os
-    provedor_geracao = os.getenv("PROVEDOR_GERACAO", PROVEDOR_OPENROUTER)
-    if provedor_geracao:
-        preferencias["order"] = [provedor_geracao]
-    print(f"Modelo OpenRouter: {MODELO_OPENROUTER} via {provedor_geracao}", flush=True)
+    provedor_geracao = os.getenv("PROVEDOR_GERACAO", PROVEDOR_OPENROUTER) or ""
+    lista = [p.strip() for p in provedor_geracao.split(",") if p.strip()]
+    if lista:
+        preferencias["order"] = lista
+        preferencias["only"] = lista              # nunca sai desta lista
+        preferencias["allow_fallbacks"] = len(lista) > 1
+    print(f"Modelo OpenRouter: {MODELO_OPENROUTER} via {lista}", flush=True)
     llm = ChatOpenAI(
         model=MODELO_OPENROUTER,
         temperature=TEMPERATURA,
