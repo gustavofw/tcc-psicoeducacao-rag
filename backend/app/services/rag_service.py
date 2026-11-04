@@ -96,9 +96,9 @@ def buscar_chunks(cursor, pergunta, k=TOP_K, candidatos=20):
         consulta AS (
             -- todas as palavras (E); se nenhum trecho tiver todas, qualquer uma (OU)
             SELECT CASE
-                WHEN EXISTS (SELECT 1 FROM chunks WHERE busca @@ plainto_tsquery('portuguese', %(p)s))
+                WHEN EXISTS (SELECT 1 FROM chunks WHERE busca @@ plainto_tsquery('portuguese', f_unaccent(%(p)s)))
                 THEN plainto_tsquery('portuguese', f_unaccent(%(p)s))
-                ELSE replace(plainto_tsquery('portuguese', %(p)s)::text, ' & ', ' | ')::tsquery
+                ELSE replace(plainto_tsquery('portuguese', f_unaccent(%(p)s))::text, ' & ', ' | ')::tsquery
             END AS q
         ),
         txt AS (
