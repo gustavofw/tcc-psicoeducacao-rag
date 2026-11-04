@@ -37,8 +37,11 @@ if PROVEDOR_LLM == "openrouter":
     from langchain_openai import ChatOpenAI
     from app.core.config import OPENROUTER_API_KEY, MODELO_OPENROUTER, PROVEDOR_OPENROUTER
     preferencias = {"data_collection": "deny", "allow_fallbacks": False}
-    if PROVEDOR_OPENROUTER:
-        preferencias["order"] = [PROVEDOR_OPENROUTER]
+    import os
+    provedor_geracao = os.getenv("PROVEDOR_GERACAO", PROVEDOR_OPENROUTER)
+    if provedor_geracao:
+        preferencias["order"] = [provedor_geracao]
+    print(f"Modelo OpenRouter: {MODELO_OPENROUTER} via {provedor_geracao}", flush=True)
     llm = ChatOpenAI(
         model=MODELO_OPENROUTER,
         temperature=TEMPERATURA,
